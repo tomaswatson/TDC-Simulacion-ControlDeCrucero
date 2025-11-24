@@ -230,7 +230,23 @@ class Ventana(QtWidgets.QWidget):
         controls.addLayout(col_right)
 
         btn_layout = QtWidgets.QVBoxLayout()
+
+        self.btn_vref_subir = QtWidgets.QPushButton("+5 km/h")
+        self.btn_vref_subir.setAutoRepeat(True)
+        self.btn_vref_subir.setAutoRepeatDelay(300)
+        self.btn_vref_subir.setAutoRepeatInterval(120)
+        self.btn_vref_subir.clicked.connect(self.aumentar_vref)
+
+        self.btn_vref_bajar = QtWidgets.QPushButton("-5 km/h")
+        self.btn_vref_bajar.setAutoRepeat(True)
+        self.btn_vref_bajar.setAutoRepeatDelay(300)
+        self.btn_vref_bajar.setAutoRepeatInterval(120)
+        self.btn_vref_bajar.clicked.connect(self.disminuir_vref)
+
+
         self.chk_live = QtWidgets.QCheckBox("Actualizar en vivo")
+        btn_layout.addWidget(self.btn_vref_subir)
+        btn_layout.addWidget(self.btn_vref_bajar)
         btn_apply = QtWidgets.QPushButton("Aplicar perturbaciones")
         btn_reset = QtWidgets.QPushButton("Reset perturbaciones")
         btn_rafaga = QtWidgets.QPushButton("Ráfaga (3s)")
@@ -469,6 +485,19 @@ class Ventana(QtWidgets.QWidget):
         self.pendiente_antes_aplicar = float(pct)
         return True
 
+    def _set_vref(self, nuevo_valor):
+        global Vref_kmh
+        Vref_kmh = float(np.clip(nuevo_valor, 30.0, 130.0))
+        self._update_small_stats()
+        self.mostrar_alerta(f"Vref -> {Vref_kmh:.1f} km/h", level="info", timeout_ms=1000)
+        print(f"Vref -> {Vref_kmh:.1f} km/h")
+
+    def aumentar_vref(self):
+        self._set_vref(Vref_kmh + 5.0)
+
+    def disminuir_vref(self):
+        self._set_vref(Vref_kmh - 5.0)
+
 
      #simulacion
     def update_sim(self):
@@ -543,11 +572,13 @@ class Ventana(QtWidgets.QWidget):
     def keyPressEvent(self, event):
         global Vref_kmh
         if event.key() == QtCore.Qt.Key_Plus or event.key() == QtCore.Qt.Key_Equal:
-            Vref_kmh = min(Vref_kmh + 5, 130.0)
-            print(f"Vref -> {Vref_kmh:.1f} km/h")
+            #Vref_kmh = min(Vref_kmh + 5, 130.0)
+            #print(f"Vref -> {Vref_kmh:.1f} km/h")
+            self.aumentar_vref()
         elif event.key() == QtCore.Qt.Key_Minus:
-            Vref_kmh = max(Vref_kmh - 5, 30.0)
-            print(f"Vref -> {Vref_kmh:.1f} km/h")
+            #Vref_kmh = max(Vref_kmh - 5, 30.0)
+            #print(f"Vref -> {Vref_kmh:.1f} km/h")
+            self.disminuir_vref()
 
 app = QtWidgets.QApplication(sys.argv)
 ventana = Ventana()

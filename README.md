@@ -57,9 +57,13 @@ python simulacion.py
 
 ## Controles
 
-Para cambiar la velocidad de referencia se utilizan las teclas:
+Para cambiar la velocidad de referencia se pueden usar las teclas:
 - '+' para incrementarla.
 - '-' para disminuirla.
+
+O se pueden utilizar los botones en pantalla:
+- Botón "+5 km/h" para incrementarla.
+- Botón "-5 km/h" para disminuirla.
 
 ### Perturbaciones
 
