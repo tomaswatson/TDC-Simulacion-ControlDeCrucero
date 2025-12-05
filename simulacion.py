@@ -137,6 +137,8 @@ class Ventana(QtWidgets.QWidget):
         super().__init__()
         self.setWindowTitle("Simulador Control Velocidad")
 
+        self.pausa = False
+
         main_layout = QtWidgets.QVBoxLayout()
         self.setLayout(main_layout)
 
@@ -230,6 +232,11 @@ class Ventana(QtWidgets.QWidget):
         controls.addLayout(col_right)
 
         btn_layout = QtWidgets.QVBoxLayout()
+
+        self.btn_pausa = QtWidgets.QPushButton("Pausar")
+        self.btn_pausa.setCheckable(False)
+        self.btn_pausa.clicked.connect(self.alternar_pausa)
+        btn_layout.addWidget(self.btn_pausa)
 
         self.btn_vref_subir = QtWidgets.QPushButton("+5 km/h")
         self.btn_vref_subir.setAutoRepeat(True)
@@ -564,6 +571,18 @@ class Ventana(QtWidgets.QWidget):
                 self.plot_perturbacion.setYRange(pmin - 10, pmax + 10)
             else:
                 self.plot_perturbacion.setYRange(pmin - 0.1 * abs(pmin), pmax + 0.1 * abs(pmax))
+
+    def alternar_pausa(self):
+        if self.pausa:
+            self.timer.start(int(dt * 1000))
+            self.btn_pausa.setText("Pausar")
+            self.mostrar_alerta("Simulación reanudada.", level="info", timeout_ms = 1200)
+            self.pausa = False
+        else:
+            self.timer.stop()
+            self.btn_pausa.setText("Reanudar")
+            self.mostrar_alerta("Simulación pausada.", level="info", timeout_ms = 1200)
+            self.pausa = True
 
     def closeEvent(self, event):
         self.timer.stop()
