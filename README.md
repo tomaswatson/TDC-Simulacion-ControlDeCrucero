@@ -82,4 +82,11 @@ El sistema permite aplicar perturbaciones externas durante la ejecución. Estas 
   Establece todas las perturbaciones a cero.
 - Casilla "Actualizar en vivo":
   
-  Si está habilitada, los sliders tienen efecto inmediato en el sistema. 
+  Si está habilitada, los sliders tienen efecto inmediato en el sistema.
+
+#### Aclaración sobre las perturbaciones
+- **Pendiente positiva:** el vehículo está subiendo una pendiente (aumenta la resistencia al avance).
+- **Pendiente negativa:** el vehículo está bajando una pendiente (el vehículo tiende a acelerar).
+
+- **Viento positivo:** ayuda al vehículo, reduciendo la fuerza que debe realizar el motor.
+- **Viento negativo:** actúa en contra del movimiento del vehículo, aumentando la resistencia.
