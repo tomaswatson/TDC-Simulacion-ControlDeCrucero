@@ -58,6 +58,9 @@ pi_log = deque(maxlen=window_len)
 
 t_sim = 0.0
 
+perturbacion_estado = False
+fuerza_perturbacion_actual = 0.0
+
 def calcular_controlador(dt, err, integral):
     P = Kp * err
     integral_candidato = integral + err * dt
@@ -65,31 +68,14 @@ def calcular_controlador(dt, err, integral):
     suma_pi = P + I
     return I, P, integral_candidato, suma_pi
 
-def aplicar_control(v_kmh, theta, theta_anterior, integral, prev_error, Vref_kmh, dt):
+
+def aplicar_control(v_kmh, theta, theta_anterior, integral, Vref_kmh, dt):
+    global fuerza_perturbacion_actual, perturbacion_estado
+
     err = (Vref_kmh - v_kmh) / 3.6
     I, P, integral_candidato, suma_pi = calcular_controlador(dt, err, integral)
 
-    v = v_kmh / 3.6
-    f_resistencia = b * v
-
-    if viento["unidad"] == "m/s":
-        v_viento = viento["mag"]
-    else:
-        v_viento = viento["mag"] / 3.6
-
-    v_rel = v
-
-    if viento_estado:
-        v_rel = v - v_viento
-
-    f_aero = 0.5 * rho * cda * v_rel * abs(v_rel)
-
-    pendiente_frac = pendiente / 100.0
-    grado_pendiente = np.arctan(pendiente_frac)
-    f_pendiente = m * g * np.sin(grado_pendiente) if pendiente_estado else 0.0
-
     pwm = np.clip(suma_pi, min_valvula, max_valvula)
-
     if not((suma_pi > max_valvula and err > 0) or (suma_pi < min_valvula and err < 0)):
         integral = integral_candidato
         I = Ki * integral
@@ -103,9 +89,15 @@ def aplicar_control(v_kmh, theta, theta_anterior, integral, prev_error, Vref_kmh
     theta = float(np.clip(theta, min_valvula, max_valvula))
 
     f_trac = k_throttle * theta
-    a = (f_trac - f_resistencia - f_aero - f_pendiente) / m
+
+    fuerza_resistencia = (v_kmh/3.6) * b
+
+    f_ext_aplicada = fuerza_perturbacion_actual if perturbacion_estado else 0.0
+
+    v = v_kmh / 3.6
+    a = (f_trac - fuerza_resistencia - f_ext_aplicada) / m
     v += a * dt
-    v = max(0, v)
+    v = max(0.0, v)
 
     v_kmh = v * 3.6
 
@@ -117,20 +109,6 @@ def aplicar_control(v_kmh, theta, theta_anterior, integral, prev_error, Vref_kmh
     }
 
     return v_kmh, theta, theta_anterior, integral, err, diag
-
-def calcular_fuerza_vencer(v_kmh_local, viento_mag_local, pendiente_pct_local):
-    v = v_kmh_local / 3.6
-    f_res = b * v
-
-    v_w = float(viento_mag_local)
-    v_rel = v - v_w
-    f_aero = 0.5 * rho * cda * v_rel * abs(v_rel)
-
-    frac = pendiente_pct_local / 100.0
-    ang = np.arctan(frac)
-    f_pend = m * g * np.sin(ang)
-
-    return f_res + f_aero + f_pend
 
 class Ventana(QtWidgets.QWidget):
     def __init__(self):
@@ -152,22 +130,24 @@ class Ventana(QtWidgets.QWidget):
         self.plot_speed = pg.PlotWidget(title="Velocidad (km/h)")
         self.line_ref = self.plot_speed.plot(pen=pg.mkPen('w',style=QtCore.Qt.DashLine), name="Vref")
         self.line_feedback = self.plot_speed.plot(pen='y', name="Vel real")
+        self.line_umbral_sup = self.plot_speed.plot(pen=pg.mkPen('orange',style=QtCore.Qt.DotLine, width=1.5), name="Umbral +5")
+        self.line_umbral_inf = self.plot_speed.plot(pen=pg.mkPen('orange',style=QtCore.Qt.DotLine, width=1.5), name="Umbral -5")
         self.plot_speed.addLegend(offset=(5, 5))
 
         self.plot_error = pg.PlotWidget(title="Señal de error (km/h)")
         self.line_error = self.plot_error.plot(pen='r')
 
-        self.plot_contoller = pg.PlotWidget(title="Salida del controlador")
-        self.line_controller = self.plot_contoller.plot(pen='g', name='suma_pi')
-        self.line_pwm = self.plot_contoller.plot(pen=pg.mkPen(style=QtCore.Qt.DotLine), name="pwm")
-        self.plot_contoller.addLegend(offset=(5, 5))
+        self.plot_controller = pg.PlotWidget(title="Salida del controlador")
+        self.line_controller = self.plot_controller.plot(pen='g', name='suma_pi')
+        self.line_pwm = self.plot_controller.plot(pen=pg.mkPen(style=QtCore.Qt.DotLine), name="pwm")
+        self.plot_controller.addLegend(offset=(5, 5))
 
         self.plot_perturbacion = pg.PlotWidget(title="Perturbaciones sumadas (N)")
         self.line_perturbacion = self.plot_perturbacion.plot(pen='m')
 
         main_layout.addWidget(self.plot_speed)
         main_layout.addWidget(self.plot_error)
-        main_layout.addWidget(self.plot_contoller)
+        main_layout.addWidget(self.plot_controller)
         main_layout.addWidget(self.plot_perturbacion)
 
         controls = QtWidgets.QHBoxLayout()
@@ -187,17 +167,6 @@ class Ventana(QtWidgets.QWidget):
         estadisticas_left_layout.addWidget(self.lbl_perturbacion_small)
         estadisticas_left_layout.addWidget(self.lbl_error_small)
         col_left.addWidget(estadisticas_left_widget)
-
-        viento_layout = QtWidgets.QVBoxLayout()
-        self.lbl_viento = QtWidgets.QLabel("Viento (m/s): 0")
-        self.lbl_viento.setAlignment(QtCore.Qt.AlignCenter)
-        viento_layout.addWidget(self.lbl_viento)
-        self.viento_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.viento_slider.setRange(-27, 27)
-        self.viento_slider.setValue(0)
-        self.viento_slider.valueChanged.connect(self.cambio_viento_slider)
-        viento_layout.addWidget(self.viento_slider)
-        col_left.addLayout(viento_layout)
         controls.addLayout(col_left)
 
         col_right = QtWidgets.QVBoxLayout()
@@ -217,18 +186,6 @@ class Ventana(QtWidgets.QWidget):
         estadisticas_right_layout.addWidget(self.lbl_suma_pi_small)
         estadisticas_right_layout.addWidget(self.lbl_pwm_small)
         col_right.addWidget(estadisticas_right_widget)
-
-        pendiente_layout = QtWidgets.QVBoxLayout()
-        self.lbl_pendiente = QtWidgets.QLabel("Pendiente (%): 0")
-        self.lbl_pendiente.setAlignment(QtCore.Qt.AlignCenter)
-        pendiente_layout.addWidget(self.lbl_pendiente)
-        self.pendiente_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.pendiente_slider.setRange(-3, 15)
-        self.pendiente_slider.setValue(0)
-        self.pendiente_slider.valueChanged.connect(self.cambio_pendiente_slider)
-        pendiente_layout.addWidget(self.pendiente_slider)
-        col_right.addLayout(pendiente_layout)
-
         controls.addLayout(col_right)
 
         btn_layout = QtWidgets.QVBoxLayout()
@@ -251,32 +208,35 @@ class Ventana(QtWidgets.QWidget):
         self.btn_vref_bajar.clicked.connect(self.disminuir_vref)
 
 
-        self.chk_live = QtWidgets.QCheckBox("Actualizar en vivo")
         btn_layout.addWidget(self.btn_vref_subir)
         btn_layout.addWidget(self.btn_vref_bajar)
         btn_apply = QtWidgets.QPushButton("Aplicar perturbaciones")
-        btn_reset = QtWidgets.QPushButton("Reset perturbaciones")
-        btn_rafaga = QtWidgets.QPushButton("Ráfaga (3s)")
-        btn_cerrar_alerta = QtWidgets.QPushButton("Cerrar alerta")
 
-        btn_apply.clicked.connect(self.aplicar_perturbaciones)
-        btn_reset.clicked.connect(self.reset_perturbaciones)
-        btn_rafaga.clicked.connect(self.rafaga_perturbacion)
-        btn_cerrar_alerta.clicked.connect(self.clear_alert)
 
-        btn_layout.addWidget(self.chk_live)
+        btn_apply.clicked.connect(self.alt_perturbacion)
+
+
         btn_layout.addWidget(btn_apply)
-        btn_layout.addWidget(btn_rafaga)
-        btn_layout.addWidget(btn_reset)
-        btn_layout.addWidget(btn_cerrar_alerta)
+
 
         controls.addLayout(btn_layout)
+
+        self.slider_unificado = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider_unificado.setRange(-400,800)
+        self.slider_unificado.setValue(0)
+        self.slider_unificado.valueChanged.connect(self.cambio_perturbacion_slider)
         main_layout.addLayout(controls)
+        self.slider_unificado_label = QtWidgets.QLabel("Perturbación (N): 0.0")
+        self.slider_unificado_label.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(self.slider_unificado_label)
+        main_layout.addWidget(self.slider_unificado)
 
         self.viento_temp = 0.0
         self.pendiente_temp = 0.0
+        self.perturbacion_temp = 0.0
         self.rafaga_duracion_ms = 3000
         self._rafaga_backup = None
+        self._rafaga_fuerza_backup = 0.0
 
         self.viento_antes_aplicar = 0.0
         self.pendiente_antes_aplicar = 0.0
@@ -321,8 +281,8 @@ class Ventana(QtWidgets.QWidget):
         if fuerza_actual is not None:
             self.lbl_perturbacion_small.setText(f"Perturbación: {fuerza_actual:.1f} N")
         else:
-            fcalc = calcular_fuerza_vencer(v_kmh, viento["mag"], pendiente)
-            self.lbl_perturbacion_small.setText(f"Perturbación: {fcalc:.1f} N")
+            f_perturbacion = fuerza_perturbacion_actual if perturbacion_estado else 0.0
+            self.lbl_perturbacion_small.setText(f"Perturbación: {f_perturbacion:.1f} N")
 
         if diag is not None:
             err_m_s = diag.get("error_velocidad", 0.0)
@@ -344,44 +304,8 @@ class Ventana(QtWidgets.QWidget):
 
         self.lbl_theta_small.setText(f"Theta: {theta:.3f} (frac) / {theta*100:.1f}%")
 
-    def cambio_viento_slider(self, value):
-        self.viento_temp = float(value)
-        self.lbl_viento.setText(f"Viento (m/s): {self.viento_temp}")
-        if self.chk_live.isChecked():
-            self._intentar_aplicar_viento(self.viento_temp)
-
-    def cambio_pendiente_slider(self, value):
-        self.pendiente_temp = float(value)
-        self.lbl_pendiente.setText(f"Pendiente (%): {self.pendiente_temp}")
-        if self.chk_live.isChecked():
-            self._intentar_aplicar_pendiente(self.pendiente_temp)
-
-    def aplicar_perturbaciones(self):
-        fuerza = calcular_fuerza_vencer(v_kmh, self.viento_temp, self.pendiente_temp)
-
-        if fuerza > fuerza_vencer_max:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO: fuerza a vencer = {fuerza:.1f} N (> {fuerza_vencer_max:.1f} N). "
-                "Estabilidad NO garantizada.",
-                level="error",
-                timeout_ms=0
-            )
-        elif fuerza < 0.0:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO: fuerza a vencer = {fuerza:.1f} N (< 0). Estabilidad NO garantizada.",
-                level="warning",
-                timeout_ms=0
-            )
-        else:
-            self.mostrar_alerta(f"Perturbación aplicada. Fuerza a vencer = {fuerza:.1f} N", level="info", timeout_ms=3000)
-
-        self._aplicar_viento_ahora(self.viento_temp)
-        self._aplicar_pendiente_ahora(self.pendiente_temp)
-        self.viento_antes_aplicar = float(self.viento_temp)
-        self.pendiente_antes_aplicar = float(self.pendiente_temp)
-
-        self._update_small_stats(fuerza_actual=fuerza)
-        print(f"Aplicadas perturbaciones: viento={viento['mag']} m/s pendiente={pendiente} % (Fuerza {fuerza:.1f} N)")
+    def cambio_perturbacion_slider(self, value):
+        self.slider_unificado_label.setText(f"Perturbación (N): {float(value):.1f}")
 
     def reset_perturbaciones(self):
         self.viento_slider.setValue(0)
@@ -395,46 +319,33 @@ class Ventana(QtWidgets.QWidget):
         self._update_small_stats()
         print("Perturbaciones reseteadas a 0.")
 
-    def rafaga_perturbacion(self):
-        global viento, viento_estado
-        valor_rafaga = float(self.viento_temp)
-        if valor_rafaga == 0.0:
-            self.mostrar_alerta("Ráfaga: el valor del slider es 0, no se aplica ráfaga.", level="info",timeout_ms=3000)
+    def alt_perturbacion(self):
+        global perturbacion_estado, fuerza_perturbacion_actual
+        valor_rafaga = float(self.slider_unificado.value())
+
+        if perturbacion_estado:
             return
 
-        fuerza = calcular_fuerza_vencer(v_kmh, valor_rafaga, pendiente)
+        if valor_rafaga == 0.0:
+            self.mostrar_alerta("Ráfaga: el valor del slider es 0, no se aplica ráfaga.", level="info",
+                                timeout_ms=3000)
+            return
 
-        if fuerza > fuerza_vencer_max:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO: ráfaga no recomendada. Fuerza a vencer = {fuerza:.1f} N (> {fuerza_vencer_max:.1f} N.",
-                level="error",
-                timeout_ms=0
-            )
-        elif fuerza < 0.0:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO: ráfaga fuera de contexto (fuerza = {fuerza:.1f} N). Se aplicará igualmente.",
-                level="warning",
-                timeout_ms=0
-            )
-        else:
-            self.mostrar_alerta(f"Ráfaga aplicada. Fuerza a vencer = {fuerza:.1f} N.", level="info", timeout_ms=3000)
+        self._rafaga_backup = fuerza_perturbacion_actual
+        fuerza_perturbacion_actual = valor_rafaga
 
-        self._rafaga_backup = (viento["mag"], viento_estado)
-        viento["mag"] = valor_rafaga
-        viento_estado = True
+        perturbacion_estado = True
 
-        self._update_small_stats(fuerza_actual=fuerza)
-        print(f"Ráfaga aplicada: viento={valor_rafaga} m/s por {self.rafaga_duracion_ms/1000:.1f}s (Fuerza {fuerza:.1f} N)")
-        QtCore.QTimer.singleShot(self.rafaga_duracion_ms,self._rafaga_fin)
+        print(f"Ráfaga aplicada: {valor_rafaga} N por {self.rafaga_duracion_ms / 1000:.1f}s (Fuerza "
+              f"{valor_rafaga:.1f} N)")
+        QtCore.QTimer.singleShot(self.rafaga_duracion_ms, self._rafaga_fin)
 
     def _rafaga_fin(self):
-        global viento, viento_estado
-        if self._rafaga_backup is not None:
-            viento["mag"], viento_estado = self._rafaga_backup
-
-            self._update_small_stats()
-            print(f"Ráfaga terminada. Viento restaurado a {viento['mag']} m/s")
-            self._rafaga_backup = None
+        global perturbacion_estado, fuerza_perturbacion_actual
+        perturbacion_estado = False
+        fuerza_perturbacion_actual = float(self._rafaga_fuerza_backup) if self._rafaga_fuerza_backup is not None else 0.0
+        self._rafaga_backup = 0.0
+        self.mostrar_alerta("Ráfaga terminada.", level="info", timeout_ms=1000)
 
     def _aplicar_viento_ahora(self, mag):
         global viento, viento_estado
@@ -448,49 +359,6 @@ class Ventana(QtWidgets.QWidget):
         pendiente_estado = True if pct != 0.0 else False
         self._update_small_stats()
 
-    def _intentar_aplicar_viento(self, mag):
-        fuerza = calcular_fuerza_vencer(v_kmh, mag, pendiente)
-        if fuerza > fuerza_vencer_max:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO (live): fuerza a vencer = {fuerza:.1f} N (> {fuerza_vencer_max:.1f} N)."
-                "Estabilidad NO garantizada.",
-                level="error",
-                timeout_ms=0
-            )
-        elif fuerza < 0.0:
-            self.mostrar_alerta(
-                f"FUERA de CONTEXTO (live): fuerza a vencer = {fuerza:.1f} N (<0). Estabilidad NO garantizada.",
-                level="warning",
-                timeout_ms=0
-            )
-        else:
-            self.mostrar_alerta(f"Viento aplicado (live). Fuerza a vencer = {fuerza:.1f} N.",level="info",timeout_ms=2000)
-
-        self._aplicar_viento_ahora(mag)
-        self.viento_antes_aplicar = float(mag)
-        return True
-
-    def _intentar_aplicar_pendiente(self, pct):
-        fuerza = calcular_fuerza_vencer(v_kmh, viento["mag"], pct)
-        if fuerza > fuerza_vencer_max:
-            self.mostrar_alerta(
-                f"FUERA DE CONTEXTO (live): fuerza a vencer = {fuerza:.1f} N (> {fuerza_vencer_max:.1f} N)."
-                "Estabilidad NO garantizada.",
-                level="error",
-                timeout_ms=0
-            )
-        elif fuerza < 0.0:
-            self.mostrar_alerta(
-                f"FUERA de CONTEXTO (live): fuerza a vencer = {fuerza:.1f} N (<0). Estabilidad NO garantizada.",
-                level="warning",
-                timeout_ms=0
-            )
-        else:
-            self.mostrar_alerta(f"Pendiente aplicada (live). Fuerza a vencer = {fuerza:.1f} N.",level="info",timeout_ms=2000)
-
-        self._aplicar_pendiente_ahora(pct)
-        self.pendiente_antes_aplicar = float(pct)
-        return True
 
     def _set_vref(self, nuevo_valor):
         global Vref_kmh
@@ -511,11 +379,12 @@ class Ventana(QtWidgets.QWidget):
         global v_kmh, theta, theta_anterior, integral, prev_error, t_sim
 
         v_kmh, theta, theta_anterior, integral, prev_error, diag \
-            = aplicar_control(v_kmh, theta, theta_anterior, integral, prev_error, Vref_kmh, dt)
+            = aplicar_control(v_kmh, theta, theta_anterior, integral, Vref_kmh, dt)
 
         t_sim += dt
 
-        fuerza_actual = calcular_fuerza_vencer(v_kmh, viento["mag"], pendiente)
+        fuerza_resistencia = v_kmh * b
+        f_ext_aplicada = fuerza_perturbacion_actual if perturbacion_estado else 0.0
 
         times.append(t_sim)
         refs.append(Vref_kmh)
@@ -523,17 +392,24 @@ class Ventana(QtWidgets.QWidget):
         error_log.append(diag["error_velocidad"] * 3.6)
         controller_log.append(diag["suma_pi"])
         pwm_log.append(diag["pwm"])
-        perturbacion_log.append(fuerza_actual)
+        perturbacion_log.append(f_ext_aplicada)
 
-        theta_real_log.append(theta*100)
+        theta_real_log.append(theta * 100)
         p_log.append(diag["P"])
         i_log.append(diag["I"])
         pi_log.append(diag["suma_pi"])
 
-        self._update_small_stats(diag=diag, fuerza_actual=fuerza_actual)
+        self._update_small_stats(diag=diag, fuerza_actual=f_ext_aplicada)
 
         self.line_ref.setData(times, refs)
         self.line_feedback.setData(times, vels)
+
+        if len(times) > 0:
+            umbral_sup = [Vref_kmh + 5.0] * len(times)
+            umbral_inf = [Vref_kmh - 5.0] * len(times)
+
+            self.line_umbral_sup.setData(times, umbral_sup)
+            self.line_umbral_inf.setData(times, umbral_inf)
 
         self.line_error.setData(times, error_log)
 
@@ -560,9 +436,9 @@ class Ventana(QtWidgets.QWidget):
             cmin = min(min(controller_log), min(pwm_log))
             cmax = max(max(controller_log), max(pwm_log))
             if cmin == cmax:
-                self.plot_contoller.setYRange(cmin - 0.1, cmax + 0.1, padding=0)
+                self.plot_controller.setYRange(cmin - 0.1, cmax + 0.1, padding=0)
             else:
-                self.plot_contoller.setYRange(cmin - 0.2 * abs(cmin), cmax + 0.2 * abs(cmax), padding=0)
+                self.plot_controller.setYRange(cmin - 0.2 * abs(cmin), cmax + 0.2 * abs(cmax), padding=0)
 
         if len(perturbacion_log) > 0:
             pmin = min(perturbacion_log)
