@@ -218,6 +218,12 @@ class Ventana(QtWidgets.QWidget):
 
         btn_layout.addWidget(btn_apply)
 
+        self.duracion_label = QtWidgets.QLabel("Duración Ráfaga (s):")
+        self.duracion_spin = QtWidgets.QSpinBox()
+        self.duracion_spin.setRange(1,20)
+        self.duracion_spin.setValue(3)
+        btn_layout.addWidget(self.duracion_label)
+        btn_layout.addWidget(self.duracion_spin)
 
         controls.addLayout(btn_layout)
 
@@ -244,6 +250,8 @@ class Ventana(QtWidgets.QWidget):
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_sim)
         self.timer.start(int(dt * 1000))
+
+        self.rafaga_tiempo_restante = 0.0
 
         self.show()
 
@@ -334,11 +342,15 @@ class Ventana(QtWidgets.QWidget):
         self._rafaga_backup = fuerza_perturbacion_actual
         fuerza_perturbacion_actual = valor_rafaga
 
+        self.rafaga_tiempo_restante = self.duracion_spin.value()
         perturbacion_estado = True
+
+        duracion_s = self.duracion_spin.value()
+        self.rafaga_duracion_ms = int(duracion_s * 1000)
 
         print(f"Ráfaga aplicada: {valor_rafaga} N por {self.rafaga_duracion_ms / 1000:.1f}s (Fuerza "
               f"{valor_rafaga:.1f} N)")
-        QtCore.QTimer.singleShot(self.rafaga_duracion_ms, self._rafaga_fin)
+        #QtCore.QTimer.singleShot(self.rafaga_duracion_ms, self._rafaga_fin)
 
     def _rafaga_fin(self):
         global perturbacion_estado, fuerza_perturbacion_actual
@@ -376,7 +388,7 @@ class Ventana(QtWidgets.QWidget):
 
      #simulacion
     def update_sim(self):
-        global v_kmh, theta, theta_anterior, integral, prev_error, t_sim
+        global v_kmh, theta, theta_anterior, integral, prev_error, t_sim, perturbacion_estado, fuerza_perturbacion_actual
 
         v_kmh, theta, theta_anterior, integral, prev_error, diag \
             = aplicar_control(v_kmh, theta, theta_anterior, integral, Vref_kmh, dt)
@@ -447,6 +459,12 @@ class Ventana(QtWidgets.QWidget):
                 self.plot_perturbacion.setYRange(pmin - 10, pmax + 10)
             else:
                 self.plot_perturbacion.setYRange(pmin - 0.1 * abs(pmin), pmax + 0.1 * abs(pmax))
+
+        if perturbacion_estado:
+            self.rafaga_tiempo_restante -= dt
+            if self.rafaga_tiempo_restante <= 0:
+                perturbacion_estado = False
+                fuerza_perturbacion_actual = 0.0
 
     def alternar_pausa(self):
         if self.pausa:
