@@ -56,10 +56,31 @@ p_log = deque(maxlen=window_len)
 i_log = deque(maxlen=window_len)
 pi_log = deque(maxlen=window_len)
 
+vels_medida = deque(maxlen=window_len)
+
 t_sim = 0.0
 
 perturbacion_estado = False
 fuerza_perturbacion_actual = 0.0
+
+num_imanes = 2
+radio_rueda = 0.3
+dist_entre_pulsos = (2 * np.pi * radio_rueda) / num_imanes
+
+class SensorDRV5023:
+    def __init__(self):
+        self.acumulador_distancia = 0.0
+        self.v_leida_ms = 0.0
+
+    def leer_f_t(self, v_real_ms, dt):
+        self.acumulador_distancia += v_real_ms * dt
+        if self.acumulador_distancia >= dist_entre_pulsos:
+            n_pulsos = int(self.acumulador_distancia / dist_entre_pulsos)
+            self.v_leida_ms = v_real_ms
+            self.acumulador_distancia -= (n_pulsos * dist_entre_pulsos)
+        return self.v_leida_ms
+
+sensor_hall = SensorDRV5023()
 
 def calcular_controlador(dt, err, integral):
     P = Kp * err
@@ -72,7 +93,9 @@ def calcular_controlador(dt, err, integral):
 def aplicar_control(v_kmh, theta, theta_anterior, integral, Vref_kmh, dt):
     global fuerza_perturbacion_actual, perturbacion_estado
 
-    err = (Vref_kmh - v_kmh) / 3.6
+    v_medida_kmh = sensor_hall.leer_f_t(v_kmh / 3.6, dt) * 3.6
+
+    err = (Vref_kmh - v_medida_kmh) / 3.6
     I, P, integral_candidato, suma_pi = calcular_controlador(dt, err, integral)
 
     pwm = np.clip(suma_pi, min_valvula, max_valvula)
@@ -105,7 +128,8 @@ def aplicar_control(v_kmh, theta, theta_anterior, integral, Vref_kmh, dt):
         "P": P, "I": I,
         "suma_pi": suma_pi,
         "pwm": pwm,
-        "error_velocidad": err
+        "error_velocidad": err,
+        "v_sensor": v_medida_kmh
     }
 
     return v_kmh, theta, theta_anterior, integral, err, diag
@@ -127,14 +151,15 @@ class Ventana(QtWidgets.QWidget):
         self.alert_clear_timer = None
         main_layout.addWidget(self.alert_label)
 
-        self.plot_speed = pg.PlotWidget(title="Velocidad (km/h)")
+        self.plot_speed = pg.PlotWidget(title="Velocidad de referencia e(t), velocidad real y(t) y velocidad medida f(t) (km/h)")
         self.line_ref = self.plot_speed.plot(pen=pg.mkPen('w',style=QtCore.Qt.DashLine), name="Vref")
         self.line_feedback = self.plot_speed.plot(pen='y', name="Vel real")
+        self.line_sensor = self.plot_speed.plot(pen=pg.mkPen('g'), name="Vel medida")
         self.line_umbral_sup = self.plot_speed.plot(pen=pg.mkPen('orange',style=QtCore.Qt.DotLine, width=1.5), name="Umbral +5")
         self.line_umbral_inf = self.plot_speed.plot(pen=pg.mkPen('orange',style=QtCore.Qt.DotLine, width=1.5), name="Umbral -5")
         self.plot_speed.addLegend(offset=(5, 5))
 
-        self.plot_error = pg.PlotWidget(title="Señal de error (km/h)")
+        self.plot_error = pg.PlotWidget(title="Señal de error e(t) (km/h)")
         self.line_error = self.plot_error.plot(pen='r')
 
         self.plot_controller = pg.PlotWidget(title="Salida del controlador")
@@ -160,10 +185,12 @@ class Ventana(QtWidgets.QWidget):
         estadisticas_left_layout.addWidget(QtWidgets.QLabel("<b>Valores reales</b>"))
         self.lbl_vref_small = QtWidgets.QLabel(f"Vref: {Vref_kmh:.1f} km/h")
         self.lbl_vreal_small = QtWidgets.QLabel(f"Vel real: {v_kmh:.1f} km/h")
+        self.lbl_vmedida_small = QtWidgets.QLabel(f"Vel medida: {0.0:.1f} km/h")
         self.lbl_perturbacion_small = QtWidgets.QLabel(f"Perturbación: {0.0:.1f} N")
         self.lbl_error_small = QtWidgets.QLabel(f"Error: {0.0:.2f} km/h")
         estadisticas_left_layout.addWidget(self.lbl_vref_small)
         estadisticas_left_layout.addWidget(self.lbl_vreal_small)
+        estadisticas_left_layout.addWidget(self.lbl_vmedida_small)
         estadisticas_left_layout.addWidget(self.lbl_perturbacion_small)
         estadisticas_left_layout.addWidget(self.lbl_error_small)
         col_left.addWidget(estadisticas_left_widget)
@@ -303,6 +330,8 @@ class Ventana(QtWidgets.QWidget):
             self.lbl_I_small.setText(f"I: {I:0.4f} m/s")
             self.lbl_suma_pi_small.setText(f"Suma PI: {suma_pi:.4f}")
             self.lbl_pwm_small.setText(f"PWM: {pwm:.4f}")
+            v_medida = diag.get("v_sensor", 0.0)
+            self.lbl_vmedida_small.setText(f"Vel medida: {v_medida:.1f} km/h")
         else:
             self.lbl_error_small.setText("Error: 0.00 km/h")
             self.lbl_P_small.setText("P: 0.0000 m/s")
@@ -411,10 +440,13 @@ class Ventana(QtWidgets.QWidget):
         i_log.append(diag["I"])
         pi_log.append(diag["suma_pi"])
 
+        vels_medida.append(diag["v_sensor"])
+
         self._update_small_stats(diag=diag, fuerza_actual=f_ext_aplicada)
 
         self.line_ref.setData(times, refs)
         self.line_feedback.setData(times, vels)
+        self.line_sensor.setData(times, vels_medida)
 
         if len(times) > 0:
             umbral_sup = [Vref_kmh + 5.0] * len(times)
