@@ -140,6 +140,7 @@ class Ventana(QtWidgets.QWidget):
         self.setWindowTitle("Simulador Control Velocidad")
 
         self.pausa = False
+        self.graph_pi = True
 
         main_layout = QtWidgets.QVBoxLayout()
         self.setLayout(main_layout)
@@ -165,7 +166,12 @@ class Ventana(QtWidgets.QWidget):
         self.plot_controller = pg.PlotWidget(title="Salida del controlador")
         self.line_controller = self.plot_controller.plot(pen='g', name='suma_pi')
         self.line_pwm = self.plot_controller.plot(pen=pg.mkPen(style=QtCore.Qt.DotLine), name="pwm")
+        self.line_p = self.plot_controller.plot(pen='b', name='P')
+        self.line_i = self.plot_controller.plot(pen='y', name='I')
         self.plot_controller.addLegend(offset=(5, 5))
+
+        self.line_p.setVisible(True)
+        self.line_i.setVisible(True)
 
         self.plot_perturbacion = pg.PlotWidget(title="Perturbaciones sumadas (N)")
         self.line_perturbacion = self.plot_perturbacion.plot(pen='m')
@@ -458,6 +464,8 @@ class Ventana(QtWidgets.QWidget):
         self.line_error.setData(times, error_log)
 
         self.line_controller.setData(times, controller_log)
+        self.line_p.setData(times, p_log)
+        self.line_i.setData(times, i_log)
         self.line_pwm.setData(times, pwm_log)
 
         self.line_perturbacion.setData(times, perturbacion_log)
@@ -477,8 +485,8 @@ class Ventana(QtWidgets.QWidget):
             self.plot_error.setYRange(emin, emax, padding=0)
 
         if len(controller_log) > 0:
-            cmin = min(min(controller_log), min(pwm_log))
-            cmax = max(max(controller_log), max(pwm_log))
+            cmin = min(min(controller_log), min(pwm_log), min(p_log), min(i_log)) if self.graph_pi else min(min(controller_log), min(pwm_log))
+            cmax = max(max(controller_log), max(pwm_log), max(p_log), max(i_log)) if self.graph_pi else max(max(controller_log), max(pwm_log))
             if cmin == cmax:
                 self.plot_controller.setYRange(cmin - 0.1, cmax + 0.1, padding=0)
             else:
@@ -510,6 +518,11 @@ class Ventana(QtWidgets.QWidget):
             self.mostrar_alerta("Simulación pausada.", level="info", timeout_ms = 1200)
             self.pausa = True
 
+    def alternar_PI(self):
+        self.graph_pi = not self.graph_pi
+        self.line_p.setVisible(self.graph_pi)
+        self.line_i.setVisible(self.graph_pi)
+
     def closeEvent(self, event):
         self.timer.stop()
         event.accept()
@@ -524,6 +537,8 @@ class Ventana(QtWidgets.QWidget):
             #Vref_kmh = max(Vref_kmh - 5, 30.0)
             #print(f"Vref -> {Vref_kmh:.1f} km/h")
             self.disminuir_vref()
+        elif event.key() == QtCore.Qt.Key_P:
+            self.alternar_PI()
 
 app = QtWidgets.QApplication(sys.argv)
 ventana = Ventana()
