@@ -65,28 +65,30 @@ O se pueden utilizar los botones en pantalla:
 - Botón "+5 km/h" para incrementarla.
 - Botón "-5 km/h" para disminuirla.
 
+También se cuenta con un botón "Pausar/Reanudar" que permite detener y retomar la simulación.
+
 ### Perturbaciones
 
 El sistema permite aplicar perturbaciones externas durante la ejecución. Estas perturbaciones se configuran mediante los controles en la interfaz:
-- Sliders de viento y pendiente:
+- Slider de perturbación:
   
-  Permiten seleccionar la magnitud de cada perturbación.
+  Permite seleccionar la magnitud de la perturbación.
+- Selector numérico:
+
+  Permite determinar la duración de la perturbación.
 - Botón "Aplicar perturbación":
   
-  Activa la perturbación en función al valor elegido en los sliders.
-- Botón "Ráfaga":
-  
-  Genera una ráfaga de viento de 3 segundos con la magnitud seleccionada.
-- Botón "Reset perturbaciones":
-  
-  Establece todas las perturbaciones a cero.
-- Casilla "Actualizar en vivo":
-  
-  Si está habilitada, los sliders tienen efecto inmediato en el sistema.
+  Activa la perturbación en función al valor elegido en el slider y el selector numérico.
 
 #### Aclaración sobre las perturbaciones
-- **Pendiente positiva:** el vehículo está subiendo una pendiente (aumenta la resistencia al avance).
-- **Pendiente negativa:** el vehículo está bajando una pendiente (el vehículo tiende a acelerar).
+- **Perturbación positiva:** actúa en contra del movimiento del vehículo, aumentando la resistencia.
+- **Perturbación negativa:** reduce la fuerza de resistencia (el vehículo tiende a acelerar).
 
-- **Viento positivo:** ayuda al vehículo, reduciendo la fuerza que debe realizar el motor.
-- **Viento negativo:** actúa en contra del movimiento del vehículo, aumentando la resistencia.
+### Controles especiales
+
+Además de los controles visibles en la interfaz, existen atajos que permiten mostrar u ocultar determinados elementos visuales sin afectar el funcionamiento interno de la simulación.
+
+- Ctrl + Alt + P
+Muestra u oculta los componentes P e I en la gráfica de salida del controlador.
+- Ctrl + Alt + B
+Muestra u oculta los controles inferiores de la interfaz.

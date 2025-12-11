@@ -4,6 +4,7 @@ import numpy as np
 from collections import deque
 
 from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtGui import QKeySequence
 import pyqtgraph as pg
 
 #parametros
@@ -145,7 +146,34 @@ class Ventana(QtWidgets.QWidget):
         main_layout = QtWidgets.QVBoxLayout()
         self.setLayout(main_layout)
 
+        self.panel_inicio = QtWidgets.QWidget()
+        inicio_layout = QtWidgets.QHBoxLayout()
+        self.panel_inicio.setLayout(inicio_layout)
+        inicio_layout.addWidget(QtWidgets.QLabel("Velocidad de referencia (km/h):"))
+        self.spin_vref = QtWidgets.QDoubleSpinBox()
+        self.spin_vref.setRange(30, 130)
+        self.spin_vref.setValue(Vref_kmh)
+        inicio_layout.addWidget(self.spin_vref)
+
+        inicio_layout.addWidget(QtWidgets.QLabel("Velocidad inicial (km/h):"))
+        self.spin_vinicial = QtWidgets.QDoubleSpinBox()
+        self.spin_vinicial.setRange(30,130)
+        self.spin_vinicial.setValue(v_kmh)
+        inicio_layout.addWidget(self.spin_vinicial)
+
+        self.btn_iniciar = QtWidgets.QPushButton("Iniciar simulación")
+        self.btn_iniciar.clicked.connect(self.iniciar_simulacion)
+        inicio_layout.addWidget(self.btn_iniciar)
+
+        main_layout.addWidget(self.panel_inicio)
+
         pg.setConfigOptions(antialias=True)
+
+        self.shortcut_lineas_pi = QtWidgets.QShortcut(QKeySequence("Ctrl+Alt+P"), self)
+        self.shortcut_lineas_pi.activated.connect(self.alternar_PI)
+
+        self.shortcut_controles = QtWidgets.QShortcut(QKeySequence("Ctrl+Alt+B"), self)
+        self.shortcut_controles.activated.connect(self.alternar_controles)
 
         self.alert_label = QtWidgets.QLabel("")
         self.alert_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -161,19 +189,25 @@ class Ventana(QtWidgets.QWidget):
         self.plot_speed.addLegend(offset=(5, 5))
 
         self.plot_error = pg.PlotWidget(title="Señal de error e(t) (km/h)")
+        self.line_error_cero = pg.InfiniteLine(pos=0, angle=0, pen=pg.mkPen('w', style=QtCore.Qt.DashLine))
+        self.plot_error.addItem(self.line_error_cero)
         self.line_error = self.plot_error.plot(pen='r')
 
         self.plot_controller = pg.PlotWidget(title="Salida del controlador")
-        self.line_controller = self.plot_controller.plot(pen='g', name='suma_pi')
+        self.line_controlador_cero = pg.InfiniteLine(pos=0, angle=0, pen=pg.mkPen('w', style=QtCore.Qt.DashLine))
+        self.plot_controller.addItem(self.line_controlador_cero)
         self.line_pwm = self.plot_controller.plot(pen=pg.mkPen(style=QtCore.Qt.DotLine), name="pwm")
         self.line_p = self.plot_controller.plot(pen='b', name='P')
         self.line_i = self.plot_controller.plot(pen='y', name='I')
+        self.line_controller = self.plot_controller.plot(pen='g', name='suma_pi')
         self.plot_controller.addLegend(offset=(5, 5))
 
         self.line_p.setVisible(True)
         self.line_i.setVisible(True)
 
         self.plot_perturbacion = pg.PlotWidget(title="Perturbaciones sumadas (N)")
+        self.line_perturbacion_cero = pg.InfiniteLine(pos=0, angle=0, pen=pg.mkPen('w', style=QtCore.Qt.DashLine))
+        self.plot_perturbacion.addItem(self.line_perturbacion_cero)
         self.line_perturbacion = self.plot_perturbacion.plot(pen='m')
 
         main_layout.addWidget(self.plot_speed)
@@ -181,7 +215,9 @@ class Ventana(QtWidgets.QWidget):
         main_layout.addWidget(self.plot_controller)
         main_layout.addWidget(self.plot_perturbacion)
 
-        controls = QtWidgets.QHBoxLayout()
+        self.controls = QtWidgets.QWidget()
+        controls_layout = QtWidgets.QHBoxLayout()
+        self.controls.setLayout(controls_layout)
 
         col_left = QtWidgets.QVBoxLayout()
         estadisticas_left_widget = QtWidgets.QWidget()
@@ -200,7 +236,7 @@ class Ventana(QtWidgets.QWidget):
         estadisticas_left_layout.addWidget(self.lbl_perturbacion_small)
         estadisticas_left_layout.addWidget(self.lbl_error_small)
         col_left.addWidget(estadisticas_left_widget)
-        controls.addLayout(col_left)
+        #controls.addLayout(col_left)
 
         col_right = QtWidgets.QVBoxLayout()
         estadisticas_right_widget = QtWidgets.QWidget()
@@ -219,7 +255,7 @@ class Ventana(QtWidgets.QWidget):
         estadisticas_right_layout.addWidget(self.lbl_suma_pi_small)
         estadisticas_right_layout.addWidget(self.lbl_pwm_small)
         col_right.addWidget(estadisticas_right_widget)
-        controls.addLayout(col_right)
+        #controls.addLayout(col_right)
 
         btn_layout = QtWidgets.QVBoxLayout()
 
@@ -258,13 +294,16 @@ class Ventana(QtWidgets.QWidget):
         btn_layout.addWidget(self.duracion_label)
         btn_layout.addWidget(self.duracion_spin)
 
-        controls.addLayout(btn_layout)
+        #controls.addLayout(btn_layout)
+        controls_layout.addLayout(col_left)
+        controls_layout.addLayout(col_right)
+        controls_layout.addLayout(btn_layout)
 
         self.slider_unificado = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider_unificado.setRange(-400,800)
         self.slider_unificado.setValue(0)
         self.slider_unificado.valueChanged.connect(self.cambio_perturbacion_slider)
-        main_layout.addLayout(controls)
+        main_layout.addWidget(self.controls)
         self.slider_unificado_label = QtWidgets.QLabel("Perturbación (N): 0.0")
         self.slider_unificado_label.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(self.slider_unificado_label)
@@ -282,7 +321,7 @@ class Ventana(QtWidgets.QWidget):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_sim)
-        self.timer.start(int(dt * 1000))
+        #self.timer.start(int(dt * 1000))
 
         self.rafaga_tiempo_restante = 0.0
 
@@ -523,6 +562,19 @@ class Ventana(QtWidgets.QWidget):
         self.line_p.setVisible(self.graph_pi)
         self.line_i.setVisible(self.graph_pi)
 
+    def alternar_controles(self):
+        visible = not self.controls.isVisible()
+        self.controls.setVisible(visible)
+        self.slider_unificado.setVisible(visible)
+        self.slider_unificado_label.setVisible(visible)
+
+    def iniciar_simulacion(self):
+        global Vref_kmh, v_kmh
+        Vref_kmh = self.spin_vref.value()
+        v_kmh = self.spin_vinicial.value()
+        self.panel_inicio.setVisible(False)
+        self.timer.start(int(dt * 1000))
+
     def closeEvent(self, event):
         self.timer.stop()
         event.accept()
@@ -537,8 +589,8 @@ class Ventana(QtWidgets.QWidget):
             #Vref_kmh = max(Vref_kmh - 5, 30.0)
             #print(f"Vref -> {Vref_kmh:.1f} km/h")
             self.disminuir_vref()
-        elif event.key() == QtCore.Qt.Key_P:
-            self.alternar_PI()
+        '''elif event.key() == QtCore.Qt.Key_P:
+            self.alternar_PI()'''
 
 app = QtWidgets.QApplication(sys.argv)
 ventana = Ventana()
