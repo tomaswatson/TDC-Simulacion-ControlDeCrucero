@@ -84,6 +84,10 @@ El sistema permite aplicar perturbaciones externas durante la ejecución. Estas 
 - **Perturbación positiva:** actúa en contra del movimiento del vehículo, aumentando la resistencia.
 - **Perturbación negativa:** reduce la fuerza de resistencia (el vehículo tiende a acelerar).
 
+### Ajustar coeficientes Kp y Ki
+
+Se permite la modificación de los coeficientes Kp y Ki mediante los sliders correspondientes. Estos cambios tienen efecto inmediato en la simulación.
+
 ### Controles especiales
 
 Además de los controles visibles en la interfaz, existen atajos que permiten mostrar u ocultar determinados elementos visuales sin afectar el funcionamiento interno de la simulación.
@@ -92,3 +96,26 @@ Además de los controles visibles en la interfaz, existen atajos que permiten mo
 Muestra u oculta los componentes P e I en la gráfica de salida del controlador.
 - Ctrl + Alt + B
 Muestra u oculta los controles inferiores de la interfaz.
+
+## Gráficos
+
+### Primer gráfico
+
+- Línea blanca punteada: Velocidad de referencia r(t)
+- Línea amarilla: Velocidad real y(t)
+- Línea verde: Velocidad medida f(t)
+- Líneas naranja punteadas: Umbral de falla
+
+### Segundo gráfico
+
+- Línea roja: Señal de error e(t)
+
+### Tercer gráfico
+
+- Línea verde: Salida del controlador
+- Línea azul: Componente proporcional
+- Línea amarilla: Componente integral
+
+### Cuarto gráfico
+
+- Línea violeta: Valor de la perturbación

@@ -180,7 +180,7 @@ class Ventana(QtWidgets.QWidget):
         self.alert_clear_timer = None
         main_layout.addWidget(self.alert_label)
 
-        self.plot_speed = pg.PlotWidget(title="Velocidad de referencia e(t), velocidad real y(t) y velocidad medida f(t) (km/h)")
+        self.plot_speed = pg.PlotWidget(title="Velocidad de referencia r(t), velocidad real y(t) y velocidad medida f(t) (km/h)")
         self.line_ref = self.plot_speed.plot(pen=pg.mkPen('w',style=QtCore.Qt.DashLine), name="Vref")
         self.line_feedback = self.plot_speed.plot(pen='y', name="Vel real")
         self.line_sensor = self.plot_speed.plot(pen=pg.mkPen('g'), name="Vel medida")
@@ -306,8 +306,44 @@ class Ventana(QtWidgets.QWidget):
         main_layout.addWidget(self.controls)
         self.slider_unificado_label = QtWidgets.QLabel("Perturbación (N): 0.0")
         self.slider_unificado_label.setAlignment(QtCore.Qt.AlignCenter)
-        main_layout.addWidget(self.slider_unificado_label)
-        main_layout.addWidget(self.slider_unificado)
+        self.slider_unificado_label.setFixedWidth(140)
+        #main_layout.addWidget(self.slider_unificado_label)
+        #main_layout.addWidget(self.slider_unificado)
+
+        pert_layout = QtWidgets.QHBoxLayout()
+        pert_layout.addWidget(self.slider_unificado_label)
+        pert_layout.addWidget(self.slider_unificado)
+        main_layout.addLayout(pert_layout)
+
+        self.slider_kp = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider_kp.setRange(0, 200)
+        self.slider_kp.setValue(45)
+        self.slider_kp.valueChanged.connect(self.cambio_kp_slider)
+        self.slider_kp_label = QtWidgets.QLabel("Kp: 0.45")
+        self.slider_kp_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.slider_kp_label.setFixedWidth(140)
+        #main_layout.addWidget(self.slider_kp_label)
+        #main_layout.addWidget(self.slider_kp)
+
+        kp_layout = QtWidgets.QHBoxLayout()
+        kp_layout.addWidget(self.slider_kp_label)
+        kp_layout.addWidget(self.slider_kp)
+        main_layout.addLayout(kp_layout)
+
+        self.slider_ki = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider_ki.setRange(0, 200)
+        self.slider_ki.setValue(22)
+        self.slider_ki.valueChanged.connect(self.cambio_ki_slider)
+        self.slider_ki_label = QtWidgets.QLabel("Ki: 0.22")
+        self.slider_ki_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.slider_ki_label.setFixedWidth(140)
+        #main_layout.addWidget(self.slider_ki_label)
+        #main_layout.addWidget(self.slider_ki)
+
+        ki_layout = QtWidgets.QHBoxLayout()
+        ki_layout.addWidget(self.slider_ki_label)
+        ki_layout.addWidget(self.slider_ki)
+        main_layout.addLayout(ki_layout)
 
         self.viento_temp = 0.0
         self.pendiente_temp = 0.0
@@ -388,6 +424,16 @@ class Ventana(QtWidgets.QWidget):
 
     def cambio_perturbacion_slider(self, value):
         self.slider_unificado_label.setText(f"Perturbación (N): {float(value):.1f}")
+
+    def cambio_kp_slider(self, value):
+        global Kp
+        self.slider_kp_label.setText(f"Kp: {float(value)/100:.2f}")
+        Kp = float(value) / 100
+
+    def cambio_ki_slider(self, value):
+        global Ki
+        self.slider_ki_label.setText(f"Ki: {float(value)/100:.2f}")
+        Ki = float(value) / 100
 
     def reset_perturbaciones(self):
         self.viento_slider.setValue(0)
@@ -567,6 +613,10 @@ class Ventana(QtWidgets.QWidget):
         self.controls.setVisible(visible)
         self.slider_unificado.setVisible(visible)
         self.slider_unificado_label.setVisible(visible)
+        self.slider_kp.setVisible(visible)
+        self.slider_kp_label.setVisible(visible)
+        self.slider_ki.setVisible(visible)
+        self.slider_ki_label.setVisible(visible)
 
     def iniciar_simulacion(self):
         global Vref_kmh, v_kmh
